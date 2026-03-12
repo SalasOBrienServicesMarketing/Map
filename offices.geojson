@@ -2438,29 +2438,6 @@
         "Last Synced Address": "",
         "On Connect": ""
       }
-    },
-    {
-      "type": "Feature",
-      "geometry": {
-        "type": "Point",
-        "coordinates": [
-          -97.2733591,
-          32.8782129
-        ]
-      },
-      "properties": {
-        "DIVISION": "Marketing",
-        "BU": "Services",
-        "COUNTRY": "US",
-        "OFFICE NAME": "Jacque",
-        "STATE / PROVINCE": "Texas",
-        "MAIN PHONE": "1.702.249.7414",
-        "ADDRESS": "5229 Fort Concho Road\nFort Worth, TX 76179",
-        "Latitude": 32.8782129,
-        "Longitude": -97.2733591,
-        "Last Synced Address": "",
-        "On Connect": ""
-      }
     }
   ]
 }
