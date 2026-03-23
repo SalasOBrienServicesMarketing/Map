@@ -316,7 +316,7 @@ const albersProjection = ol.proj.get("EPSG:5070");
     // Layers
 const statesProvincesLayer = new ol.layer.Vector({
   source: new ol.source.Vector({
-    url: "https://raw.githubusercontent.com/JLickteig/SalasOBrienOfficeMap/main/statesandprovinces.geojson",
+    url: "https://raw.githubusercontent.com/SalasOBrienServicesMarketing/Map/main/statesandprovinces.geojson",
     format: new ol.format.GeoJSON(),
 	wrapX: false  
   }),
@@ -333,7 +333,7 @@ if (!isNorthAmerica) return null;
 
 const greatLakesLayer = new ol.layer.Vector({
   source: new ol.source.Vector({
-    url: "https://raw.githubusercontent.com/JLickteig/SalasOBrienOfficeMap/main/greatlakes.geojson",
+    url: "https://raw.githubusercontent.com/SalasOBrienServicesMarketing/Map/main/greatlakes.geojson",
     format: new ol.format.GeoJSON()
   }),
   style: new ol.style.Style({
@@ -344,7 +344,7 @@ const greatLakesLayer = new ol.layer.Vector({
 
 const countriesLayer = new ol.layer.Vector({
   source: new ol.source.Vector({
-    url: "https://raw.githubusercontent.com/JLickteig/SalasOBrienOfficeMap/main/countries.geojson",
+    url: "https://raw.githubusercontent.com/SalasOBrienServicesMarketing/Map/main/countries.geojson",
     format: new ol.format.GeoJSON(),
 	wrapX: false  
   }),
@@ -368,7 +368,7 @@ const countriesLayer = new ol.layer.Vector({
 
     const officeLayer = new ol.layer.Vector({
       source: new ol.source.Vector({
-        url: "https://raw.githubusercontent.com/JLickteig/SalasOBrienOfficeMap/main/offices.geojson",
+        url: "https://raw.githubusercontent.com/SalasOBrienServicesMarketing/Map/main/offices.geojson",
         format: new ol.format.GeoJSON()
       }),
       style: new ol.style.Style({
@@ -1200,7 +1200,7 @@ document.getElementById('clearRegion').addEventListener('click', () => {
     // Template download
     document.getElementById('downloadTemplate').addEventListener('click', async (e) => {
       e.preventDefault();
-      const url = "https://raw.githubusercontent.com/JLickteig/SalasOBrienOfficeMap/refs/heads/main/MapAddressTemplate.csv";
+      const url = "https://raw.githubusercontent.com/SalasOBrienServicesMarketing/Map/refs/heads/main/MapAddressTemplate.csv";
       try {
         const response = await fetch(url);
         const blob = await response.blob();
