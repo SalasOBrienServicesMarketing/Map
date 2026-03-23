@@ -2438,6 +2438,29 @@
         "Last Synced Address": "",
         "On Connect": ""
       }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -76.9369067,
+          42.1372967
+        ]
+      },
+      "properties": {
+        "DIVISION": "Test",
+        "BU": "Test",
+        "COUNTRY": "US",
+        "OFFICE NAME": "Test",
+        "STATE / PROVINCE": "New York",
+        "MAIN PHONE": "",
+        "ADDRESS": "Big Flats, NY",
+        "Latitude": 42.1372967,
+        "Longitude": -76.9369067,
+        "Last Synced Address": "",
+        "On Connect": ""
+      }
     }
   ]
 }
