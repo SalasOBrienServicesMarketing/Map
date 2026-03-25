@@ -2438,52 +2438,6 @@
         "Last Synced Address": "",
         "On Connect": ""
       }
-    },
-    {
-      "type": "Feature",
-      "geometry": {
-        "type": "Point",
-        "coordinates": [
-          -93.61639629999999,
-          41.5896139
-        ]
-      },
-      "properties": {
-        "DIVISION": "test",
-        "BU": "test",
-        "COUNTRY": "US",
-        "OFFICE NAME": "Test",
-        "STATE / PROVINCE": "Iowa",
-        "MAIN PHONE": "1.617.494.1464",
-        "ADDRESS": "Des Moines, IA",
-        "Latitude": 41.5896139,
-        "Longitude": -93.61639629999999,
-        "Last Synced Address": "",
-        "On Connect": ""
-      }
-    },
-    {
-      "type": "Feature",
-      "geometry": {
-        "type": "Point",
-        "coordinates": [
-          -76.9369067,
-          42.1372967
-        ]
-      },
-      "properties": {
-        "DIVISION": "test",
-        "BU": "test",
-        "COUNTRY": "US",
-        "OFFICE NAME": "test again",
-        "STATE / PROVINCE": "New York",
-        "MAIN PHONE": "1.617.494.1464",
-        "ADDRESS": "Big Flats, NY",
-        "Latitude": 42.1372967,
-        "Longitude": -76.9369067,
-        "Last Synced Address": "",
-        "On Connect": ""
-      }
     }
   ]
 }
