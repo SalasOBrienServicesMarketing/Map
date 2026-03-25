@@ -15,7 +15,7 @@ jobs:
 
       - name: Fetch GeoJSON from Apps Script
         run: |
-          curl -sL "https://script.google.com/macros/s/AKfycbxImoosV5mh05LmYJhrvB-Z9EQ97HcublGuH683gYXg2W2Mden6tJ6j9-RP6puMyU6D/exec" -o offices.geojson
+          curl -sL "https://script.google.com/macros/s/AKfycbyWHdgUpkge6ibR3_daKg3zbJdoEjZib6YqHerhFrpMprsgtne-wbhq_iB1BuvDXu9X/exec" -o offices.geojson
 
       - name: Commit and push changes
         run: |
