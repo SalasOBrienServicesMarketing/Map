@@ -195,6 +195,7 @@
   left: auto !important;
   right: 20px !important;
 }
+
   </style>
 </head>
 <body>
@@ -233,6 +234,48 @@
     </div>
   </div>
 
+  <div class="accordion">
+    <div class="accordion-header" aria-expanded="false">
+      <span>Services</span>
+      <span class="chev"></span>
+    </div>
+    <div class="accordion-body">
+      <div id="servicesEmpty" class="muted" style="display:none;">No services in the office data yet.</div>
+      <div id="servicesControls">
+        <label class="subhead">Click to select or unselect services; offices offering any selected service are shown</label>
+        <div style="margin-top: 6px; margin-bottom: 6px;">
+          <input type="text" id="servicesSearchBox" placeholder="Search..." style="width: 100%; padding: 6px 8px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 13px;">
+        </div>
+        <select id="servicesFilter" multiple size="12"></select>
+        <div style="margin-top:8px; display:flex; gap:8px;">
+          <button class="so-btn" id="clearServices">Clear</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<div id="specificStates" style="margin-top:10px; padding-top:12px; border-top:1px solid var(--line);">
+  <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+    <input type="checkbox" id="hideStatesCheckbox" style="width: auto;">
+    <span>Select specific states / provinces</span>
+  </label>
+  <div id="statesSelectContainer" style="display:none; margin-top:10px;">
+    <div class="segmented" style="margin-bottom:10px;">
+      <button id="statesModeHide" class="active">Hide others</button>
+      <button id="statesModeHighlight">Highlight</button>
+    </div>
+    <label class="subhead" style="display:block;">Select which to keep / highlight (Ctrl/Cmd + click for multiple)</label>
+    <div style="margin-top: 6px;">
+      <input type="text" id="statesSearchBox" placeholder="Search..." style="width: 100%; padding: 6px 8px; border: 1px solid #e5e7eb; border-radius: 8px; margin-bottom: 6px; font-size: 13px;">
+    </div>
+    <select id="statesSelect" multiple size="10" style="margin-top: 0;"></select>
+    <div style="margin-top:8px; display: flex; gap: 8px;">
+      <button class="so-btn" style="flex: 1;" id="selectAllStates">Select All</button>
+      <button class="so-btn" style="flex: 1;" id="clearStatesSelection">Clear</button>
+    </div>
+  </div>
+</div>
+
   <div class="hr"></div>
   <button class="so-btn" id="clearFilters">Clear All Filters</button>
 </div>
@@ -245,24 +288,16 @@
       </div>
       <div class="muted" style="margin-top:6px;">Shows a 3-hour driving area around offices.</div>
     </div>
-	
-<div class="panel-section">
-  <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-    <input type="checkbox" id="hideStatesCheckbox" style="width: auto;">
-    <span>Only show specific states / provinces</span>
-  </label>
-  <div id="statesSelectContainer" style="display:none; margin-top:10px;">
-    <label class="subhead">Select which to display (Ctrl/Cmd + click for multiple)</label>
-    <div style="margin-top: 6px;">
-      <input type="text" id="statesSearchBox" placeholder="Search..." style="width: 100%; padding: 6px 8px; border: 1px solid #e5e7eb; border-radius: 8px; margin-bottom: 6px; font-size: 13px;">
+
+    <div class="panel-section" id="insetSection" style="display:none;">
+      <div class="section-title">Australia Inset</div>
+      <div class="segmented">
+        <button id="insetLeft">Bottom Left</button>
+        <button id="insetRight" class="active">Bottom Right</button>
+      </div>
+      <div class="muted" style="margin-top:6px;">Australia is drawn on the map next to the US (not to scale), so it pans and zooms with the map.</div>
     </div>
-    <select id="statesSelect" multiple size="10" style="margin-top: 0;"></select>
-    <div style="margin-top:8px; display: flex; gap: 8px;">
-      <button class="so-btn" style="flex: 1;" id="selectAllStates">Select All</button>
-      <button class="so-btn" style="flex: 1;" id="clearStatesSelection">Clear</button>
-    </div>
-  </div>
-</div>
+
    <div class="panel-section">
       <div class="section-title">Layers</div>
 
@@ -313,10 +348,73 @@ proj4.defs("EPSG:5070", "+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=37.5 +lon_0=-9
 ol.proj.proj4.register(proj4);
 const albersProjection = ol.proj.get("EPSG:5070");
 
+// Australian Albers (GDA94) - used to draw Australia undistorted before it is moved next to the US
+proj4.defs("EPSG:3577", "+proj=aea +lat_1=-18 +lat_2=-36 +lat_0=0 +lon_0=132 +x_0=0 +y_0=0 +ellps=GRS80 +units=m +no_defs");
+
+// Data files: local copies when running locally, the GitHub repo when deployed
+const IS_LOCAL = location.protocol === 'file:'
+  || ['localhost', '127.0.0.1'].includes(location.hostname)
+  || location.hostname.endsWith('.trycloudflare.com');
+const DATA_BASE = IS_LOCAL ? './' : 'https://raw.githubusercontent.com/SalasOBrienServicesMarketing/Map/main/';
+
+// Australia inset. Australia is drawn on the main map itself, at a spot off the US coast, so it
+// pans and zooms with the map. Anything inside AU_BBOX (lon/lat) is moved there instead of being
+// plotted at its real location.
+const AU_BBOX = [110, -45, 160, -9];
+const INSET_SCALE = 0.3;                                    // Australia's size relative to the real map scale
+const INSET_ANCHORS = { left: [-120, 21], right: [-69, 22] }; // lon/lat where the centre of Australia is placed
+const AU_VIEW_BBOX = [112, -44.5, 154.5, -9.5];             // mainland + Tasmania; sizes the inset frame
+const AU_CENTER = proj4('EPSG:4326', 'EPSG:3577', [133.25, -27]);
+let insetSide = 'right';
+
+function inAustralia(lng, lat) {
+  return lng >= AU_BBOX[0] && lng <= AU_BBOX[2] && lat >= AU_BBOX[1] && lat <= AU_BBOX[3];
+}
+function isAustraliaFeature(f) {
+  const g = f.geometry;
+  return !!g && g.type === 'Point' && inAustralia(g.coordinates[0], g.coordinates[1]);
+}
+
+// The sheet's services column holds a semicolon-delimited list ("Civil; Structural; MEP")
+function officeServices(props) {
+  const key = Object.keys(props || {}).find(k => /^services?$/i.test(k.trim()));
+  const raw = key ? props[key] : '';
+  if (raw == null) return [];
+  return String(raw).split(';').map(x => x.trim()).filter(Boolean);
+}
+
+// Set by buildFilters(): does an office pass the State/Province, Business Unit and Services filters?
+let accordionFilter = () => true;
+// Set by buildFilters(): re-evaluates which options each of those lists still offers
+let refreshFilterOptions = () => {};
+
+// lon/lat -> map coordinates (EPSG:5070); Australian coordinates are shrunk and moved to the inset
+function lonLatToMap(lng, lat) {
+  if (!inAustralia(lng, lat)) return ol.proj.fromLonLat([lng, lat], albersProjection);
+  const [x, y] = proj4('EPSG:4326', 'EPSG:3577', [lng, lat]);
+  const [ax, ay] = ol.proj.fromLonLat(INSET_ANCHORS[insetSide], albersProjection);
+  return [ax + (x - AU_CENTER[0]) * INSET_SCALE, ay + (y - AU_CENTER[1]) * INSET_SCALE];
+}
+
+// Read lon/lat GeoJSON into features positioned with lonLatToMap
+function readLonLat(fc) {
+  const features = new ol.format.GeoJSON().readFeatures(fc);
+  features.forEach(f => f.getGeometry().applyTransform((input, output, dim) => {
+    for (let i = 0; i < input.length; i += dim) {
+      const [x, y] = lonLatToMap(input[i], input[i + 1]);
+      output[i] = x;
+      output[i + 1] = y;
+    }
+    return output;
+  }));
+  return features;
+}
+
     // Layers
 const statesProvincesLayer = new ol.layer.Vector({
   source: new ol.source.Vector({
-    url: "https://raw.githubusercontent.com/SalasOBrienServicesMarketing/Map/main/statesandprovinces.geojson",
+    // US + Canada only (370 KB); the full world file was 22 MB and froze slower browsers
+    url: DATA_BASE + "statesandprovinces-na.geojson",
     format: new ol.format.GeoJSON(),
 	wrapX: false  
   }),
@@ -333,7 +431,7 @@ if (!isNorthAmerica) return null;
 
 const greatLakesLayer = new ol.layer.Vector({
   source: new ol.source.Vector({
-    url: "https://raw.githubusercontent.com/SalasOBrienServicesMarketing/Map/main/greatlakes.geojson",
+    url: DATA_BASE + "greatlakes.geojson",
     format: new ol.format.GeoJSON()
   }),
   style: new ol.style.Style({
@@ -342,12 +440,10 @@ const greatLakesLayer = new ol.layer.Vector({
   })
 });
 
+// countries.geojson (4 MB) has no NAME property, so this style never drew anything. It is no longer
+// downloaded; the layer stays so the visibility toggles below keep working.
 const countriesLayer = new ol.layer.Vector({
-  source: new ol.source.Vector({
-    url: "https://raw.githubusercontent.com/SalasOBrienServicesMarketing/Map/main/countries.geojson",
-    format: new ol.format.GeoJSON(),
-	wrapX: false  
-  }),
+  source: new ol.source.Vector({ wrapX: false }),
   style: function(feature) {
     const name = feature.get('NAME');
     const isVisible = name === 'Canada' || name === 'United States of America';
@@ -366,29 +462,115 @@ const countriesLayer = new ol.layer.Vector({
       })
     });
 
-    const officeLayer = new ol.layer.Vector({
-      source: new ol.source.Vector({
-        url: "https://raw.githubusercontent.com/SalasOBrienServicesMarketing/Map/main/offices.geojson",
-        format: new ol.format.GeoJSON()
-      }),
-      style: new ol.style.Style({
-        image: new ol.style.Circle({
-          radius: 6,
-          fill: new ol.style.Fill({ color: "#009DE0" }),
-          stroke: new ol.style.Stroke({ color: "#EDEDED", width: 0.5 })
-        })
+    // Office features are loaded in code (see "Load offices data") so Australian records can be
+    // moved to the inset position.
+    const OFFICE_STYLE = new ol.style.Style({
+      image: new ol.style.Circle({
+        radius: 6,
+        fill: new ol.style.Fill({ color: "#009DE0" }),
+        stroke: new ol.style.Stroke({ color: "#EDEDED", width: 0.5 })
       })
     });
+    const officeLayer = new ol.layer.Vector({ source: new ol.source.Vector(), style: OFFICE_STYLE });
+
+    // Australia inset: a framed box, the Australian states, and its label
+    const STATE_STYLE = new ol.style.Style({
+      stroke: new ol.style.Stroke({ color: "#CCCCCC", width: 0.5 }),
+      fill: new ol.style.Fill({ color: "#EDEDED" })
+    });
+    // Australia stays hidden until a record (office or uploaded CSV row) is located there; see updateAustraliaActive()
+    const auFrameLayer = new ol.layer.Vector({
+      visible: false,
+      source: new ol.source.Vector(),
+      style: function(feature) {
+        if (feature.getGeometry().getType() === 'Point') {
+          return new ol.style.Style({
+            text: new ol.style.Text({
+              text: 'Australia', font: '600 11px system-ui, sans-serif', fill: new ol.style.Fill({ color: '#666' }),
+              textAlign: 'left', offsetX: 8, offsetY: 11
+            })
+          });
+        }
+        return new ol.style.Style({
+          stroke: new ol.style.Stroke({ color: '#CCCCCC', width: 1 }),
+          fill: new ol.style.Fill({ color: '#FFFFFF' })
+        });
+      }
+    });
+    const auStatesLayer = new ol.layer.Vector({ visible: false, source: new ol.source.Vector(), style: STATE_STYLE });
+    let auStatesGeojson = null;
+
+    // (Re)build the inset frame and Australian states at the current inset position
+    function placeAustralia() {
+      const [w, s, e, n] = AU_VIEW_BBOX;
+      const pts = [];
+      for (let i = 0; i <= 20; i++) { // sample the edges, since parallels curve in projection
+        const t = i / 20, lng = w + (e - w) * t, lat = s + (n - s) * t;
+        pts.push(lonLatToMap(lng, s), lonLatToMap(lng, n), lonLatToMap(w, lat), lonLatToMap(e, lat));
+      }
+      const pad = 90000; // metres of margin around Australia inside the frame
+      const [minX, minY, maxX, maxY] = ol.extent.boundingExtent(pts);
+      const ext = [minX - pad, minY - pad, maxX + pad, maxY + pad];
+      const frame = ol.geom.Polygon.fromExtent(ext);
+      const label = new ol.geom.Point([ext[0], ext[3]]);
+      auFrameLayer.getSource().clear();
+      auFrameLayer.getSource().addFeatures([new ol.Feature(frame), new ol.Feature(label)]);
+
+      auStatesLayer.getSource().clear();
+      if (auStatesGeojson) auStatesLayer.getSource().addFeatures(readLonLat(auStatesGeojson));
+    }
 
     const map = new ol.Map({
       target: 'map',
-      layers: [statesProvincesLayer, greatLakesLayer, countriesLayer, haloLayer, officeLayer],
+      layers: [statesProvincesLayer, greatLakesLayer, countriesLayer, auFrameLayer, auStatesLayer, haloLayer, officeLayer],
       view: new ol.View({
         projection: albersProjection,
         center: ol.proj.fromLonLat([-105, 42], albersProjection),
         zoom: 5.25
       })
     });
+    placeAustralia();
+
+    // Initial view: US/Canada (plus both inset positions once Australia is shown), clear of the
+    // control panel (320px + margins)
+    function fitInitialView() {
+      const ll = (lng, lat) => ol.proj.fromLonLat([lng, lat], albersProjection);
+      let extent = ol.extent.boundingExtent([ll(-125, 53), ll(-67, 53), ll(-97, 25)]);
+      if (auActive) {
+        const keepSide = insetSide;
+        for (const side of ['left', 'right']) {
+          insetSide = side;
+          placeAustralia();
+          extent = ol.extent.extend(extent, auFrameLayer.getSource().getExtent());
+        }
+        insetSide = keepSide;
+        placeAustralia();
+      }
+      map.getView().fit(extent, { padding: [10, 10, 50, 360], maxZoom: 5.25 });
+    }
+    let auActive = false;
+    fitInitialView();
+
+    // Once the person pans/zooms, don't move the view for them
+    let userMovedMap = false;
+    ['pointerdown', 'wheel', 'touchstart'].forEach(ev =>
+      map.getViewport().addEventListener(ev, () => { userMovedMap = true; }, { passive: true }));
+
+    // Australia (inset, its states in the picker, the position switch) only appears once there is
+    // at least one record located there: an office from the spreadsheet or a row of an uploaded CSV.
+    function updateAustraliaActive() {
+      const inOffices = !!originalGeojson && originalGeojson.features.some(isAustraliaFeature);
+      const inUploads = uploadLayers.some(l => l.rows.some(r => inAustralia(r.lng, r.lat)));
+      const next = inOffices || inUploads;
+      const changed = next !== auActive;
+      auActive = next;
+      document.getElementById('insetSection').style.display = auActive ? '' : 'none';
+      updateStatesVisibility();
+      if (changed) {
+        buildStatesSelect(document.getElementById('statesSearchBox').value);
+        if (auActive && !userMovedMap) fitInitialView();
+      }
+    }
 
     // Fix Canvas2D performance warning
     map.once('rendercomplete', function() {
@@ -408,11 +590,22 @@ const countriesLayer = new ol.layer.Vector({
     const MAX_LAYERS = 3;
     const uploadLayers = [];
     const isoCache = new Map();
+    let currentOffices = emptyFC(); // office GeoJSON (lon/lat) currently shown, after filters
+
+    // Draw offices (Australian records land on the inset via lonLatToMap)
+    function showOffices(fc) {
+      currentOffices = fc;
+      officeLayer.getSource().clear();
+      officeLayer.getSource().addFeatures(readLonLat(fc));
+    }
 
     // Popup
     const popupEl = document.getElementById('popup');
     map.on('pointermove', function (evt) {
-      const feature = map.forEachFeatureAtPixel(evt.pixel, f => f);
+      // only hit-test the office/upload points, not the (large) basemap polygons
+      const feature = map.forEachFeatureAtPixel(evt.pixel, f => f, {
+        layerFilter: l => l !== statesProvincesLayer && l !== greatLakesLayer && l !== countriesLayer && l !== auStatesLayer && l !== auFrameLayer && l !== haloLayer
+      });
       if (feature && feature.getGeometry().getType() === 'Point') {
         const p = feature.getProperties();
         const name = p["OFFICE NAME"] || p.officeName || p.LABEL || '';
@@ -429,9 +622,12 @@ const countriesLayer = new ol.layer.Vector({
             ${bu ? `<div style="font-size:11px; color:#666;">${bu}</div>` : ''}
           </div>
         `;
-        popupEl.style.left = evt.pixel[0] + 12 + 'px';
-        popupEl.style.top = evt.pixel[1] + 12 + 'px';
         popupEl.style.display = 'block';
+        // flip to the left of the cursor when it would run off the right edge (e.g. an inset near the right)
+        const x = evt.pixel[0];
+        const flip = x + 12 + popupEl.offsetWidth > window.innerWidth;
+        popupEl.style.left = (flip ? x - 12 - popupEl.offsetWidth : x + 12) + 'px';
+        popupEl.style.top = evt.pixel[1] + 12 + 'px';
         map.getTargetElement().style.cursor = 'pointer';
       } else {
         popupEl.style.display = 'none';
@@ -484,13 +680,8 @@ const countriesLayer = new ol.layer.Vector({
     }
 
     function setHaloData(fc) {
-      const format = new ol.format.GeoJSON();
-      const features = format.readFeatures(fc, {
-        featureProjection: albersProjection,
-        dataProjection: 'EPSG:4326'
-      });
       haloLayer.getSource().clear();
-      haloLayer.getSource().addFeatures(features);
+      haloLayer.getSource().addFeatures(readLonLat(fc));
     }
 
     async function rebuildOfficeHalos(sourceData) {
@@ -499,27 +690,16 @@ const countriesLayer = new ol.layer.Vector({
         return;
       }
 
-      let features;
-      if (sourceData) {
-        features = sourceData.features;
-      } else {
-        const format = new ol.format.GeoJSON();
-        const gj = format.writeFeaturesObject(officeLayer.getSource().getFeatures(), {
-          featureProjection: albersProjection,
-          dataProjection: 'EPSG:4326'
-        });
-        features = gj.features;
-      }
-
+      const features = (sourceData || currentOffices).features;
       const pts = features.filter(f => f.geometry?.type === 'Point');
       if (!pts.length) {
         setHaloData(emptyFC());
         return;
       }
 
+      // Circles are built in lon/lat; readLonLat moves the Australian ones onto the inset
       const fc = await buildIsochronesForPoints(pts);
-      const dissolved = dissolvePolygons(fc);
-      setHaloData(dissolved);
+      setHaloData(dissolvePolygons(fc));
     }
 
     // Reach toggle
@@ -568,6 +748,7 @@ const countriesLayer = new ol.layer.Vector({
 	// States & Provinces functionality
 let allUSStates = new Set();
 let allCanadaProvinces = new Set();
+let allAustraliaStates = new Set();
 let selectedStatesProvinces = new Set();
 let allStatesData = []; // Store for filtering
 
@@ -652,41 +833,125 @@ function buildStatesSelect(filter = '') {
     caGroup.appendChild(option);
   });
   if (caFiltered.length > 0) select.appendChild(caGroup);
+
+  // Australia group
+  const auGroup = document.createElement('optgroup');
+  auGroup.label = 'Australia';
+  const auFiltered = (auActive ? Array.from(allAustraliaStates) : [])
+    .filter(s => !filter || s.toLowerCase().includes(filterLower))
+    .sort();
+
+  auFiltered.forEach(state => {
+    const option = document.createElement('option');
+    option.value = state;
+    option.textContent = state;
+    if (selectedStatesProvinces.has(state)) {
+      option.selected = true;
+    }
+    auGroup.appendChild(option);
+  });
+  if (auFiltered.length > 0) select.appendChild(auGroup);
 }
 
+// "Hide others" removes every state/province that isn't selected (and filters the office dots to
+// the selection); "Highlight" keeps everything and fills the selected ones in gray (#666666).
+const HIGHLIGHT_COLOR = '#666666';
+let statesMode = 'hide';
+const HIGHLIGHT_STYLE = new ol.style.Style({
+  stroke: new ol.style.Stroke({ color: "#FFFFFF", width: 0.75 }),
+  fill: new ol.style.Fill({ color: HIGHLIGHT_COLOR })
+});
+
 function updateStatesVisibility() {
-  const isHidden = document.getElementById('hideStatesCheckbox').checked;
-  greatLakesLayer.setVisible(!isHidden);
-  
-  // Update the style function dynamically
+  const selecting = document.getElementById('hideStatesCheckbox').checked;
+  const hideOthers = selecting && statesMode === 'hide';
+  const highlight = selecting && statesMode === 'highlight';
+  greatLakesLayer.setVisible(!hideOthers);
+
+  // One rule for every state/province layer (US/Canada and the Australia inset)
+  const styleFor = feature => {
+    const selected = selectedStatesProvinces.has(feature.get('name'));
+    if (highlight && selected) return HIGHLIGHT_STYLE;
+    if (hideOthers && !selected) return null;
+    return STATE_STYLE;
+  };
   statesProvincesLayer.setStyle(function(feature) {
     const admin = feature.get('admin');
     const isNorthAmerica = admin === 'Canada' || admin === 'United States of America';
-    if (!isNorthAmerica) return null;
-    
-    const stateName = feature.get('name');
-    
-    // If checkbox unchecked, show all North American states
-    if (!isHidden) {
-      return new ol.style.Style({
-        stroke: new ol.style.Stroke({ color: "#CCCCCC", width: 0.5 }),
-        fill: new ol.style.Fill({ color: "#EDEDED" })
-      });
-    }
-    
-    // If checkbox checked, only show selected states
-    if (selectedStatesProvinces.has(stateName)) {
-      return new ol.style.Style({
-        stroke: new ol.style.Stroke({ color: "#CCCCCC", width: 0.5 }),
-        fill: new ol.style.Fill({ color: "#EDEDED" })
-      });
-    }
-    
-    return null;
+    return isNorthAmerica ? styleFor(feature) : null;
   });
-  
-  stateProvincesLayer.changed();
+  statesProvincesLayer.changed();
+  auStatesLayer.setStyle(styleFor);
+  auStatesLayer.changed();
+
+  // Hide the Australia inset only in "hide others" mode when none of its states are selected
+  const anyAustralia = Array.from(selectedStatesProvinces).some(s => allAustraliaStates.has(s));
+  const showInset = auActive && (!hideOthers || anyAustralia);
+  auFrameLayer.setVisible(showInset);
+  auStatesLayer.setVisible(showInset);
 }
+
+// Offices passing the State/Province, Business Unit and Services filters, and (in "Hide others"
+// mode) located in one of the specifically selected states
+function filteredOffices() {
+  const byState = document.getElementById('hideStatesCheckbox').checked && statesMode === 'hide' && selectedStatesProvinces.size > 0;
+  return {
+    type: 'FeatureCollection',
+    features: originalGeojson.features.filter(f =>
+      accordionFilter(f) && (!byState || selectedStatesProvinces.has(f.properties["STATE / PROVINCE"])))
+  };
+}
+
+// Apply the current selection + mode to the layers and office dots
+function applyStatesMode() {
+  const selecting = document.getElementById('hideStatesCheckbox').checked;
+  if (selecting && statesMode === 'hide') {
+    const any = selectedStatesProvinces.size > 0;
+    // nothing selected yet: hide everything until something is picked
+    statesProvincesLayer.setVisible(any);
+    countriesLayer.setVisible(any);
+    if (any && originalGeojson) {
+      showOffices(filteredOffices());
+    }
+    setOfficesVisibility(any);
+  } else {
+    // not selecting, or highlighting: the full map and every office passing the filters stay visible
+    statesProvincesLayer.setVisible(true);
+    countriesLayer.setVisible(true);
+    if (originalGeojson) showOffices(filteredOffices());
+    setOfficesVisibility(true);
+  }
+  updateStatesVisibility();
+}
+
+function setStatesMode(mode) {
+  statesMode = mode;
+  document.getElementById('statesModeHide').classList.toggle('active', mode === 'hide');
+  document.getElementById('statesModeHighlight').classList.toggle('active', mode === 'highlight');
+  applyStatesMode();
+}
+// Back to the full map: box unticked, nothing selected, default "Hide others" mode
+function resetStatesSelection() {
+  document.getElementById('hideStatesCheckbox').checked = false;
+  document.getElementById('statesSelectContainer').style.display = 'none';
+  selectedStatesProvinces.clear();
+  document.getElementById('statesSearchBox').value = '';
+  buildStatesSelect();
+  setStatesMode('hide');
+}
+document.getElementById('statesModeHide').addEventListener('click', () => setStatesMode('hide'));
+document.getElementById('statesModeHighlight').addEventListener('click', () => setStatesMode('highlight'));
+
+// Load Australian states for the inset (and the state picker)
+fetch(DATA_BASE + 'australia.geojson')
+  .then(r => r.json())
+  .then(gj => {
+    auStatesGeojson = gj;
+    placeAustralia();
+    gj.features.forEach(f => allAustraliaStates.add(f.properties.name));
+    buildStatesSelect(document.getElementById('statesSearchBox').value);
+  })
+  .catch(err => console.error('Failed to load australia.geojson', err));
 
 // Search box functionality
 document.getElementById('statesSearchBox').addEventListener('input', function(e) {
@@ -695,37 +960,16 @@ document.getElementById('statesSearchBox').addEventListener('input', function(e)
 
 document.getElementById('hideStatesCheckbox').addEventListener('change', function(e) {
   const container = document.getElementById('statesSelectContainer');
-  const isHidden = e.target.checked;
-  
-  container.style.display = isHidden ? 'block' : 'none';
-  
-  if (!isHidden) {
-    // Unchecked - show all states/provinces again
+  container.style.display = e.target.checked ? 'block' : 'none';
+
+  if (!e.target.checked) {
+    // Unchecked - clear the selection; applyStatesMode() restores the full map
     selectedStatesProvinces.clear();
     document.getElementById('statesSelect').selectedIndex = -1;
     document.getElementById('statesSearchBox').value = '';
     buildStatesSelect();
-    statesProvincesLayer.setVisible(true);
-    countriesLayer.setVisible(true);
-	 // Restore all offices
-  if (originalGeojson) {
-    const format = new ol.format.GeoJSON();
-    const features = format.readFeatures(originalGeojson, {
-      featureProjection: albersProjection,
-      dataProjection: 'EPSG:4326'
-    });
-    officeLayer.getSource().clear();
-    officeLayer.getSource().addFeatures(features);
   }
-    setOfficesVisibility(true);
-  } else {
-    // Checked - hide everything until states are selected
-    statesProvincesLayer.setVisible(false);
-    countriesLayer.setVisible(false);
-    setOfficesVisibility(false);
-  }
-  
-  updateStatesVisibility();
+  applyStatesMode();
 });
 
 // Select handling
@@ -734,33 +978,7 @@ document.getElementById('statesSelect').addEventListener('change', function(e) {
   Array.from(e.target.selectedOptions).forEach(opt => {
     selectedStatesProvinces.add(opt.value);
   });
-  
-  if (selectedStatesProvinces.size > 0) {
-    // Show the layers
-    statesProvincesLayer.setVisible(true);
-    
-    // Filter offices to only show those in selected states/provinces
-    if (originalGeojson) {
-      const filtered = {
-        type: 'FeatureCollection',
-        features: originalGeojson.features.filter(f => {
-          const stateProvince = f.properties["STATE / PROVINCE"];
-          return selectedStatesProvinces.has(stateProvince);
-        })
-      };
-      
-      const format = new ol.format.GeoJSON();
-      const features = format.readFeatures(filtered, {
-        featureProjection: albersProjection,
-        dataProjection: 'EPSG:4326'
-      });
-      officeLayer.getSource().clear();
-      officeLayer.getSource().addFeatures(features);
-      setOfficesVisibility(true);
-    }
-  }
-  
-  updateStatesVisibility();
+  applyStatesMode();
 });
 
 // Select All button
@@ -771,55 +989,41 @@ document.getElementById('selectAllStates').addEventListener('click', function() 
     opt.selected = true;
     selectedStatesProvinces.add(opt.value);
   });
-  updateStatesVisibility();
+  applyStatesMode();
 });
 
-// Clear button
+// Clear button - drops the selection and leaves select mode
 document.getElementById('clearStatesSelection').addEventListener('click', function() {
   selectedStatesProvinces.clear();
   document.getElementById('statesSelect').selectedIndex = -1;
-  document.getElementById('statesSearchBox').value = ''; // ADD THIS LINE
-  document.getElementById('hideStatesCheckbox').checked = false; // ADD THIS LINE
-  document.getElementById('statesSelectContainer').style.display = 'none'; // ADD THIS LINE
-  
-  statesProvincesLayer.setVisible(true); // ADD THIS LINE
-  countriesLayer.setVisible(true); // ADD THIS LINE
-  
-  // Restore all offices
-  if (originalGeojson) {
-    const format = new ol.format.GeoJSON();
-    const features = format.readFeatures(originalGeojson, {
-      featureProjection: albersProjection,
-      dataProjection: 'EPSG:4326'
-    });
-    officeLayer.getSource().clear();
-    officeLayer.getSource().addFeatures(features);
-  }
-  
-  setOfficesVisibility(true); // ADD THIS LINE
-  updateStatesVisibility();
+  document.getElementById('statesSearchBox').value = '';
+  document.getElementById('hideStatesCheckbox').checked = false;
+  document.getElementById('statesSelectContainer').style.display = 'none';
+  applyStatesMode();
 });
 
-	    // Load offices data
-    officeLayer.getSource().once('change', function() {
-      if (officeLayer.getSource().getState() === 'ready') {
-        const format = new ol.format.GeoJSON();
-        originalGeojson = format.writeFeaturesObject(officeLayer.getSource().getFeatures(), {
-          featureProjection: albersProjection,
-          dataProjection: 'EPSG:4326'
-        });
+	    // Load offices data (kept as lon/lat GeoJSON; showOffices() splits it between the maps)
+    fetch(DATA_BASE + 'offices.geojson', { cache: 'no-store' }) // always the latest export, never a stale browser copy
+      .then(r => r.json())
+      .then(gj => {
+        originalGeojson = gj;
+        showOffices(originalGeojson);
+        updateAustraliaActive();
         buildFilters(originalGeojson);
         updateLegend();
-      }
-    });
+      })
+      .catch(err => console.error('Failed to load offices.geojson', err));
 
     // Filters
     function buildFilters(gj) {
       const regionSelect = document.getElementById('regionFilter');
       const buSelect = document.getElementById('buFilter');
+      const servicesSelect = document.getElementById('servicesFilter');
 
       const states = [...new Set(gj.features.filter(f => f.properties.COUNTRY === 'US').map(f => f.properties["STATE / PROVINCE"]).filter(Boolean))].sort();
       const provinces = [...new Set(gj.features.filter(f => f.properties.COUNTRY === 'CAN').map(f => f.properties["STATE / PROVINCE"]).filter(Boolean))].sort();
+      // Australian records are recognised by location, so the spreadsheet's COUNTRY value doesn't matter
+      const auStates = [...new Set(gj.features.filter(isAustraliaFeature).map(f => f.properties["STATE / PROVINCE"]).filter(Boolean))].sort();
       const bus = [...new Set(gj.features.map(f => f.properties.BU).filter(Boolean))].sort();
 
       const usGroup = document.createElement('optgroup');
@@ -841,30 +1045,21 @@ document.getElementById('clearStatesSelection').addEventListener('click', functi
       });
 
 
-     
+      const auGroup = document.createElement('optgroup');
+      auGroup.label = 'Australia';
+      auStates.forEach(s => {
+        const o = document.createElement('option');
+        o.value = 'AU|' + s;
+        o.textContent = s;
+        auGroup.appendChild(o);
+      });
+
       regionSelect.appendChild(usGroup);
 	  regionSelect.appendChild(caGroup);
+      if (auStates.length) regionSelect.appendChild(auGroup);
 
 // Add search functionality for region filter
-document.getElementById('regionSearchBox').addEventListener('input', function(e) {
-  const filterText = e.target.value.toLowerCase();
-  const optgroups = regionSelect.querySelectorAll('optgroup');
-  
-  optgroups.forEach(group => {
-    const options = group.querySelectorAll('option');
-    let hasVisibleOptions = false;
-    
-    options.forEach(opt => {
-      const text = opt.textContent.toLowerCase();
-      const matches = text.includes(filterText);
-      opt.style.display = matches ? '' : 'none';
-      if (matches) hasVisibleOptions = true;
-    });
-    
-    // Hide the optgroup if none of its options match
-    group.style.display = hasVisibleOptions ? '' : 'none';
-  });
-});
+document.getElementById('regionSearchBox').addEventListener('input', () => syncSelect(regionSelect, 'regionSearchBox'));
 
       bus.forEach(b => {
         const o = document.createElement('option');
@@ -873,72 +1068,181 @@ document.getElementById('regionSearchBox').addEventListener('input', function(e)
         buSelect.appendChild(o);
       });
 
+      // Services: one option per distinct service (case-insensitive), first spelling wins
+      const serviceLabels = new Map();
+      gj.features.forEach(f => officeServices(f.properties).forEach(sv => {
+        const k = sv.toLowerCase();
+        if (!serviceLabels.has(k)) serviceLabels.set(k, sv);
+      }));
+      [...serviceLabels.entries()].sort((a, b) => a[1].localeCompare(b[1])).forEach(([k, label]) => {
+        const o = document.createElement('option');
+        o.value = k;
+        o.textContent = label;
+        servicesSelect.appendChild(o);
+      });
+      document.getElementById('servicesEmpty').style.display = serviceLabels.size ? 'none' : 'block';
+      document.getElementById('servicesControls').style.display = serviceLabels.size ? '' : 'none';
+      document.getElementById('servicesSearchBox').addEventListener('input', () => syncSelect(servicesSelect, 'servicesSearchBox'));
+
       function getSelected(select) {
         return Array.from(select.selectedOptions).map(o => o.value);
       }
 
-      async function applyFilters() {
-        const regionsRaw = getSelected(regionSelect);
-        const regions = regionsRaw.map(v => v.split('|')[1]);
-        const busSel = getSelected(buSelect);
-
-        const filtered = {
-          type: 'FeatureCollection',
-          features: originalGeojson.features.filter(f => {
-            const props = f.properties || {};
-            let ok = true;
-            if (regions.length) {
-              const code = props["STATE / PROVINCE"] || '';
-              if (!regions.includes(code)) ok = false;
-            }
-            if (busSel.length && props.BU && !busSel.includes(props.BU)) ok = false;
-            return ok;
-          })
+      // The State / Province, Business Unit and Services lists filter each other. An option is
+      // shown only if some office with that value also passes the selections made in the other two lists.
+      const regionKey = f => {
+        const p = f.properties || {};
+        const st = p["STATE / PROVINCE"];
+        if (!st) return null;
+        if (isAustraliaFeature(f)) return 'AU|' + st;
+        return p.COUNTRY === 'US' ? 'US|' + st : p.COUNTRY === 'CAN' ? 'CAN|' + st : null;
+      };
+      const serviceKeys = f => officeServices(f.properties).map(x => x.toLowerCase());
+      function selectionTests() {
+        const r = new Set(getSelected(regionSelect)), b = new Set(getSelected(buSelect)), sv = new Set(getSelected(servicesSelect));
+        return {
+          region: f => !r.size || r.has(regionKey(f)),
+          bu: f => !b.size || !(f.properties || {}).BU || b.has(f.properties.BU),
+          services: f => !sv.size || serviceKeys(f).some(k => sv.has(k))
         };
+      }
 
-        const format = new ol.format.GeoJSON();
-        const features = format.readFeatures(filtered, {
-          featureProjection: albersProjection,
-          dataProjection: 'EPSG:4326'
+      // an option is visible when it is available (linked to the other lists) and matches its search box
+      function syncSelect(select, searchId) {
+        const t = searchId ? document.getElementById(searchId).value.toLowerCase() : '';
+        select.querySelectorAll('option').forEach(o => {
+          o.hidden = o.dataset.unavailable === '1' || !o.textContent.toLowerCase().includes(t);
         });
-        officeLayer.getSource().clear();
-        officeLayer.getSource().addFeatures(features);
+        select.querySelectorAll('optgroup').forEach(g => {
+          g.hidden = ![...g.querySelectorAll('option')].some(o => !o.hidden);
+        });
+      }
+
+      refreshFilterOptions = function() {
+        const lists = [
+          { select: regionSelect, key: 'region', search: 'regionSearchBox', values: f => [regionKey(f)], others: ['bu', 'services'] },
+          { select: buSelect, key: 'bu', search: null, values: f => [(f.properties || {}).BU], others: ['region', 'services'] },
+          { select: servicesSelect, key: 'services', search: 'servicesSearchBox', values: serviceKeys, others: ['region', 'bu'] }
+        ];
+        let avail = {};
+        // Dropping a selection that has lost its link only loosens the other lists, so this settles quickly
+        for (let pass = 0; pass < 4; pass++) {
+          const tests = selectionTests();
+          avail = {};
+          for (const l of lists) {
+            const set = new Set();
+            gj.features.forEach(f => { if (l.others.every(k => tests[k](f))) l.values(f).forEach(v => v && set.add(v)); });
+            avail[l.key] = set;
+          }
+          let changed = false;
+          for (const l of lists) {
+            Array.from(l.select.selectedOptions).forEach(o => {
+              if (!avail[l.key].has(o.value)) { o.selected = false; changed = true; }
+            });
+          }
+          if (!changed) break;
+        }
+        for (const l of lists) {
+          l.select.querySelectorAll('option').forEach(o => { o.dataset.unavailable = avail[l.key].has(o.value) ? '0' : '1'; });
+          syncSelect(l.select, l.search);
+        }
+      };
+
+      // Showing/hiding options changes a list's height, which makes the browser throw its scroll
+      // position to the top or bottom. Run fn, then put each list back so that the option that was
+      // at the top of its view is still at the same place.
+      function withScrollKept(fn) {
+        const keepers = [regionSelect, buSelect, servicesSelect].map(select => {
+          const top = select.scrollTop, y0 = select.getBoundingClientRect().y;
+          const anchors = [];
+          for (const o of select.options) {
+            if (o.hidden) continue;
+            const y = o.getBoundingClientRect().y - y0;
+            if (y + o.offsetHeight > 0) anchors.push({ o, y });
+          }
+          return () => {
+            const a = anchors.find(x => !x.o.hidden);
+            if (top === 0) { select.scrollTop = 0; return; } // a list sitting at its top stays there
+            if (!a) { select.scrollTop = top; return; }
+            select.scrollTop += (a.o.getBoundingClientRect().y - select.getBoundingClientRect().y) - a.y;
+          };
+        });
+        const result = fn();
+        keepers.forEach(k => k());
+        requestAnimationFrame(() => keepers.forEach(k => k()));
+        [regionSelect, buSelect, servicesSelect].forEach(holdScroll);
+        return result;
+      }
+
+      // After the selection changes the browser scrolls the list again a moment later (to reveal an
+      // earlier selection), which is the "jump to the top/bottom". Undo that for a short moment,
+      // unless the person scrolls or clicks themselves.
+      function holdScroll(select) {
+        if (select._releaseScroll) select._releaseScroll();
+        const target = select.scrollTop;
+        const userEvents = ['wheel', 'pointerdown', 'touchstart', 'keydown'];
+        const onScroll = () => { if (Math.abs(select.scrollTop - target) > 1) select.scrollTop = target; };
+        const release = () => {
+          clearTimeout(timer);
+          select.removeEventListener('scroll', onScroll);
+          userEvents.forEach(ev => select.removeEventListener(ev, release));
+          select._releaseScroll = null;
+        };
+        const timer = setTimeout(release, 400);
+        select.addEventListener('scroll', onScroll);
+        userEvents.forEach(ev => select.addEventListener(ev, release));
+        select._releaseScroll = release;
+      }
+
+      async function applyFilters() {
+        withScrollKept(refreshFilterOptions);
+        const tests = selectionTests();
+        accordionFilter = f => tests.region(f) && tests.bu(f) && tests.services(f);
+
+        const filtered = filteredOffices(); // includes the "specific states" selection in hide mode
+        showOffices(filtered);
 
         if (reachEnabled && officeLayer.getVisible()) await rebuildOfficeHalos(filtered);
       }
 
-document.getElementById('clearRegion').addEventListener('click', () => {
+      document.getElementById('clearRegion').addEventListener('click', () => {
         regionSelect.selectedIndex = -1;
         document.getElementById('regionSearchBox').value = '';
-        // Show all options again
-        const optgroups = regionSelect.querySelectorAll('optgroup');
-        optgroups.forEach(group => {
-          group.style.display = '';
-          group.querySelectorAll('option').forEach(opt => {
-            opt.style.display = '';
-          });
-        });
         applyFilters();
       });
       document.getElementById('clearBU').addEventListener('click', () => {
         buSelect.selectedIndex = -1;
         applyFilters();
       });
+      document.getElementById('clearServices').addEventListener('click', () => {
+        servicesSelect.selectedIndex = -1;
+        document.getElementById('servicesSearchBox').value = '';
+        applyFilters();
+      });
       document.getElementById('clearFilters').addEventListener('click', () => {
         regionSelect.selectedIndex = -1;
         buSelect.selectedIndex = -1;
-        const format = new ol.format.GeoJSON();
-        const features = format.readFeatures(originalGeojson, {
-          featureProjection: albersProjection,
-          dataProjection: 'EPSG:4326'
-        });
-        officeLayer.getSource().clear();
-        officeLayer.getSource().addFeatures(features);
-        if (reachEnabled && officeLayer.getVisible()) rebuildOfficeHalos(originalGeojson);
+        servicesSelect.selectedIndex = -1;
+        document.getElementById('regionSearchBox').value = '';
+        document.getElementById('servicesSearchBox').value = '';
+        accordionFilter = () => true;
+        refreshFilterOptions();
+        resetStatesSelection(); // also redraws the offices
       });
 
       regionSelect.addEventListener('change', applyFilters);
       buSelect.addEventListener('change', applyFilters);
+      servicesSelect.addEventListener('change', applyFilters);
+      // plain click toggles a service (no Ctrl/Cmd needed), so several can be picked in a row
+      servicesSelect.addEventListener('mousedown', e => {
+        if (e.target.tagName !== 'OPTION' || e.button !== 0) return;
+        e.preventDefault();
+        withScrollKept(() => {
+          e.target.selected = !e.target.selected;
+          servicesSelect.focus({ preventScroll: true });
+          applyFilters();
+        });
+      });
     }
 
     // Legend
@@ -1058,6 +1362,7 @@ document.getElementById('clearRegion').addEventListener('click', () => {
       const layerRecord = {
         id: layerId,
         layer: layer,
+        rows: [], // parsed points (lon/lat), kept so they can be re-placed when the inset moves
         nameInputId: `name-${layerId}`,
         pickr,
         get visible() { return visible; }
@@ -1089,6 +1394,7 @@ document.getElementById('clearRegion').addEventListener('click', () => {
         map.removeLayer(layer);
         const idx = uploadLayers.findIndex(l => l.id === layerId);
         if (idx >= 0) uploadLayers.splice(idx, 1);
+        updateAustraliaActive();
         layerCount--;
         document.getElementById('addLayerBtn').disabled = layerCount >= MAX_LAYERS;
         updateLegend();
@@ -1103,6 +1409,19 @@ document.getElementById('clearRegion').addEventListener('click', () => {
       if (layerCount >= MAX_LAYERS) {
         document.getElementById('addLayerBtn').disabled = true;
       }
+    }
+
+    // Put an upload layer's points on the map (Australian ones land on the inset)
+    function placeUploadLayer(rec) {
+      const source = rec.layer.getSource();
+      source.clear();
+      source.addFeatures(rec.rows.map(r => {
+        const f = new ol.Feature({ geometry: new ol.geom.Point(lonLatToMap(r.lng, r.lat)) });
+        f.set('officeName', r.officeName);
+        f.set('address', r.address);
+        f.set('color', r.color);
+        return f;
+      }));
     }
 
     function handleCSVUpload(event, layerRecord, statusEl) {
@@ -1121,7 +1440,7 @@ document.getElementById('clearRegion').addEventListener('click', () => {
           console.log('First row:', results.data[0]);
           console.log('Column names:', results.meta.fields);
           
-          const features = [];
+          const rows = [];
           const color = layerRecord.pickr.getColor().toHEXA().toString();
           let skipped = 0;
           let geocoded = 0;
@@ -1155,28 +1474,25 @@ document.getElementById('clearRegion').addEventListener('click', () => {
             }
 
             if (isFinite(lat) && isFinite(lng)) {
-              const feature = new ol.Feature({
-                geometry: new ol.geom.Point(ol.proj.fromLonLat([lng, lat], albersProjection))
+              rows.push({
+                lng, lat,
+                officeName: row["OFFICE NAME"] || row["LABEL"] || row.Name || row.name || "",
+                address: row.ADDRESS || row.Address || row.address || "",
+                color
               });
-              
-              // Set properties
-              feature.set('officeName', row["OFFICE NAME"] || row["LABEL"] || row.Name || row.name || "");
-              feature.set('address', row.ADDRESS || row.Address || row.address || "");
-              feature.set('color', color);
-              
-              features.push(feature);
             } else {
               skipped++;
               console.warn('Skipping row (no valid coords or address):', row);
             }
           }
 
-          layerRecord.layer.getSource().clear();
-          layerRecord.layer.getSource().addFeatures(features);
+          layerRecord.rows = rows;
+          placeUploadLayer(layerRecord);
+          updateAustraliaActive();
 
           const name = document.getElementById(layerRecord.nameInputId).value || 'Layer';
-          if (features.length > 0) {
-            statusEl.textContent = `✅ ${features.length} locations added to ${name}.`;
+          if (rows.length > 0) {
+            statusEl.textContent = `✅ ${rows.length} locations added to ${name}.`;
             if (geocoded > 0) {
               statusEl.textContent += ` (${geocoded} geocoded)`;
             }
@@ -1200,7 +1516,9 @@ document.getElementById('clearRegion').addEventListener('click', () => {
     // Template download
     document.getElementById('downloadTemplate').addEventListener('click', async (e) => {
       e.preventDefault();
-      const url = "https://raw.githubusercontent.com/SalasOBrienServicesMarketing/Map/refs/heads/main/MapAddressTemplate.csv";
+      const url = IS_LOCAL
+        ? DATA_BASE + "MapAddressTemplate.csv"
+        : "https://raw.githubusercontent.com/SalasOBrienServicesMarketing/Map/refs/heads/main/MapAddressTemplate.csv";
       try {
         const response = await fetch(url);
         const blob = await response.blob();
@@ -1227,22 +1545,15 @@ document.getElementById('clearRegion').addEventListener('click', () => {
 
       document.getElementById('regionFilter').selectedIndex = -1;
       document.getElementById('buFilter').selectedIndex = -1;
-	  document.getElementById('hideStatesCheckbox').checked = false;
-document.getElementById('statesSelectContainer').style.display = 'none';
-selectedStatesProvinces.clear();
-document.getElementById('statesSearchBox').value = '';
-buildStatesSelect();
-updateStatesVisibility();
+      document.getElementById('servicesFilter').selectedIndex = -1;
+      document.getElementById('regionSearchBox').value = '';
+      document.getElementById('servicesSearchBox').value = '';
+      accordionFilter = () => true;
+      refreshFilterOptions();
+      resetStatesSelection(); // back to the default mode; also restores the full map
+      updateAustraliaActive();
 
-	      if (originalGeojson) {
-        const format = new ol.format.GeoJSON();
-        const features = format.readFeatures(originalGeojson, {
-          featureProjection: albersProjection,
-          dataProjection: 'EPSG:4326'
-        });
-        officeLayer.getSource().clear();
-        officeLayer.getSource().addFeatures(features);
-      }
+	      if (originalGeojson) showOffices(originalGeojson);
 
       if (reachEnabled && officeLayer.getVisible()) {
         rebuildOfficeHalos(originalGeojson);
@@ -1252,6 +1563,20 @@ updateStatesVisibility();
 
       updateLegend();
     });
+
+    // Australia inset position (bottom left / bottom right of the US). Everything that holds
+    // Australian points is re-placed, since positions are computed from lon/lat.
+    function setInsetPosition(side) {
+      insetSide = side;
+      document.getElementById('insetLeft').classList.toggle('active', side === 'left');
+      document.getElementById('insetRight').classList.toggle('active', side === 'right');
+      placeAustralia();
+      showOffices(currentOffices);
+      uploadLayers.forEach(placeUploadLayer);
+      if (reachEnabled && officeLayer.getVisible()) rebuildOfficeHalos(currentOffices);
+    }
+    document.getElementById('insetLeft').addEventListener('click', () => setInsetPosition('left'));
+    document.getElementById('insetRight').addEventListener('click', () => setInsetPosition('right'));
 
     // Export map
     document.getElementById('exportMap').addEventListener('click', () => {
