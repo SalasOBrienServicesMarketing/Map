@@ -1006,6 +1006,10 @@ document.getElementById('clearStatesSelection').addEventListener('click', functi
     fetch(DATA_BASE + 'offices.geojson', { cache: 'no-store' }) // always the latest export, never a stale browser copy
       .then(r => r.json())
       .then(gj => {
+        // stray spaces in the sheet (e.g. " New Jersey") would sort a state to the top and break matching
+        gj.features.forEach(f => ['STATE / PROVINCE', 'BU', 'COUNTRY', 'OFFICE NAME'].forEach(k => {
+          if (typeof f.properties[k] === 'string') f.properties[k] = f.properties[k].trim();
+        }));
         originalGeojson = gj;
         showOffices(originalGeojson);
         updateAustraliaActive();
