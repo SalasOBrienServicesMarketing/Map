@@ -1,7 +1,9 @@
 name: Update GeoJSON
 
 on:
-  workflow_dispatch:   # only runs when you click "Run workflow" in GitHub
+  workflow_dispatch:      # keeps the manual "Run workflow" button
+  schedule:
+    - cron: '*/5 * * * *'   # every 5 minutes
 
 permissions:
   contents: write
