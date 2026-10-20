@@ -520,44 +520,43 @@ const countriesLayer = new ol.layer.Vector({
         stroke: new ol.style.Stroke({ color: "#FFFFFF", width: 1.5 })
       })
     });
-    // One dot per office: offices whose dots would overlap on screen (e.g. two offices in the same
-    // building complex) are fanned out into a small group around their shared spot. This is done
-    // in screen pixels, so the groups spread out again by themselves as you zoom in.
-    const DOT_PITCH_PX = 15; // centre-to-centre distance between neighbouring dots
+    // One dot per office: offices whose dots would sit (nearly) on top of each other are nudged
+    // apart just enough that each one can be seen and hovered; a slight overlap is fine. This is
+    // done in screen pixels, so the dots drift back to their true spots as you zoom in.
+    const DOT_MIN_GAP_PX = 9; // closest two dot centres are allowed to get (dots are 12px wide)
     let spreadCache = { key: null, geoms: new Map(), styles: new Map() };
     function spreadGeometries(resolution) {
       const source = officeLayer.getSource();
       const key = resolution + '|' + source.getRevision();
       if (spreadCache.key === key) return spreadCache;
       const feats = source.getFeatures().filter(f => f.getGeometry() && f.getGeometry().getType() === 'Point');
-      const pos = feats.map(f => f.getGeometry().getCoordinates());
-      const parent = feats.map((_, i) => i);
-      const find = i => { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; };
-      const maxDist = DOT_PITCH_PX * resolution;
-      for (let i = 0; i < feats.length; i++) {
-        for (let j = i + 1; j < feats.length; j++) {
-          if (Math.hypot(pos[i][0] - pos[j][0], pos[i][1] - pos[j][1]) < maxDist) parent[find(i)] = find(j);
+      feats.sort((x, y) => String(x.get('OFFICE NAME')).localeCompare(String(y.get('OFFICE NAME'))));
+      const orig = feats.map(f => f.getGeometry().getCoordinates());
+      const pos = orig.map(c => [c[0], c[1]]);
+      const gap = DOT_MIN_GAP_PX * resolution;
+      // push any two dots that are closer than the gap apart, a little at a time, until none are
+      for (let pass = 0; pass < 40; pass++) {
+        let moved = false;
+        for (let i = 0; i < pos.length; i++) {
+          for (let j = i + 1; j < pos.length; j++) {
+            let dx = pos[j][0] - pos[i][0], dy = pos[j][1] - pos[i][1];
+            let d = Math.hypot(dx, dy);
+            if (d >= gap) continue;
+            if (d < gap * 0.01) { // same spot: side by side (or at an angle for a third, fourth...)
+              const ang = ((j - i - 1) * 2.399963) % (2 * Math.PI);
+              dx = Math.cos(ang); dy = Math.sin(ang); d = 1;
+            }
+            const push = (gap - d) / 2 / d;
+            pos[i][0] -= dx * push; pos[i][1] -= dy * push;
+            pos[j][0] += dx * push; pos[j][1] += dy * push;
+            moved = true;
+          }
         }
+        if (!moved) break;
       }
-      const groups = new Map();
-      feats.forEach((f, i) => {
-        const r = find(i);
-        if (!groups.has(r)) groups.set(r, []);
-        groups.get(r).push(i);
-      });
       const geoms = new Map();
-      groups.forEach(idx => {
-        if (idx.length < 2) return;
-        idx.sort((x, y) => String(feats[x].get('OFFICE NAME')).localeCompare(String(feats[y].get('OFFICE NAME'))));
-        const cx = idx.reduce((t, i) => t + pos[i][0], 0) / idx.length;
-        const cy = idx.reduce((t, i) => t + pos[i][1], 0) / idx.length;
-        const n = idx.length;
-        // two dots sit side by side; more form a ring just wide enough for them not to overlap
-        const ring = n === 2 ? DOT_PITCH_PX / 2 : DOT_PITCH_PX / (2 * Math.sin(Math.PI / n));
-        idx.forEach((i, k) => {
-          const ang = n === 2 ? (k ? 0 : Math.PI) : Math.PI / 2 + (2 * Math.PI * k) / n;
-          geoms.set(feats[i], new ol.geom.Point([cx + Math.cos(ang) * ring * resolution, cy + Math.sin(ang) * ring * resolution]));
-        });
+      feats.forEach((f, i) => {
+        if (Math.hypot(pos[i][0] - orig[i][0], pos[i][1] - orig[i][1]) > 1e-6 * resolution) geoms.set(f, new ol.geom.Point(pos[i]));
       });
       spreadCache = { key, geoms, styles: new Map() };
       return spreadCache;
