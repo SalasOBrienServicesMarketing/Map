@@ -655,26 +655,30 @@ const countriesLayer = new ol.layer.Vector({
     // Popup
     const popupEl = document.getElementById('popup');
     map.on('pointermove', function (evt) {
-      // only hit-test the office/upload points, not the (large) basemap polygons
-      const feature = map.forEachFeatureAtPixel(evt.pixel, f => f, {
+      // only hit-test the office/upload points, not the (large) basemap polygons. Offices that sit
+      // (almost) on the same spot overlap into one dot, so collect every one under the cursor
+      const hits = [];
+      map.forEachFeatureAtPixel(evt.pixel, f => {
+        if (f.getGeometry().getType() === 'Point' && !hits.includes(f)) hits.push(f);
+      }, {
         layerFilter: l => l !== statesProvincesLayer && l !== greatLakesLayer && l !== countriesLayer && l !== auStatesLayer && l !== auFrameLayer && l !== haloLayer
       });
-      if (feature && feature.getGeometry().getType() === 'Point') {
-        const p = feature.getProperties();
-        const name = p["OFFICE NAME"] || p.officeName || p.LABEL || '';
-        const address = p.ADDRESS || p.address || '';
-        const phone = p["MAIN PHONE"] || '';
-        const bu = p.BU || p.bu || '';
-        const color = p.color || '#009DE0';
-
-        popupEl.innerHTML = `
-          <div style="line-height:1.2;">
+      if (hits.length) {
+        popupEl.innerHTML = hits.map((feature, i) => {
+          const p = feature.getProperties();
+          const name = p["OFFICE NAME"] || p.officeName || p.LABEL || '';
+          const address = p.ADDRESS || p.address || '';
+          const phone = p["MAIN PHONE"] || '';
+          const bu = p.BU || p.bu || '';
+          const color = p.color || '#009DE0';
+          return `
+          <div style="line-height:1.2;${i ? ' margin-top:8px; padding-top:8px; border-top:1px solid #e5e7eb;' : ''}">
             <div style="font-weight:bold; color:${color};">${name}</div>
             <div style="font-size:11px; color:#333;">${address}</div>
             ${phone ? `<div style="font-size:11px; color:#666;">${phone}</div>` : ''}
             ${bu ? `<div style="font-size:11px; color:#666;">${bu}</div>` : ''}
-          </div>
-        `;
+          </div>`;
+        }).join('');
         popupEl.style.display = 'block';
         // flip to the left of the cursor when it would run off the right edge (e.g. an inset near the right)
         const x = evt.pixel[0];
