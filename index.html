@@ -202,7 +202,7 @@
   <aside id="panel">
   
   <div class="panel-section">
-  <div class="section-title">Office Marker Filters</div>
+  <div class="section-title">Office Filters</div>
 
   <div class="accordion">
     <div class="accordion-header" aria-expanded="false">
@@ -254,7 +254,31 @@
     </div>
   </div>
 
-<div id="specificStates" style="margin-top:10px; padding-top:12px; border-top:1px solid var(--line);">
+<div class="accordion">
+    <div class="accordion-header" aria-expanded="false">
+      <span>Markets</span>
+      <span class="chev"></span>
+    </div>
+    <div class="accordion-body">
+      <div id="marketsEmpty" class="muted" style="display:none;">No markets in the office data yet.</div>
+      <div id="marketsControls">
+        <div class="segmented" style="margin-bottom:8px;">
+          <button id="marketsModeHighlight" class="active">Highlight</button>
+          <button id="marketsModeFilter">Filter</button>
+        </div>
+        <label class="subhead" id="marketsHint" style="display:block;"></label>
+        <div style="margin-top: 6px; margin-bottom: 6px;">
+          <input type="text" id="marketsSearchBox" placeholder="Search..." style="width: 100%; padding: 6px 8px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 13px;">
+        </div>
+        <select id="marketsFilter" multiple size="12"></select>
+        <div style="margin-top:8px; display:flex; gap:8px;">
+          <button class="so-btn" id="clearMarkets">Clear</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="specificStates" style="margin-top:10px; padding-top:12px; border-top:1px solid var(--line);">
   <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
     <input type="checkbox" id="hideStatesCheckbox" style="width: auto;">
     <span>Select specific states / provinces</span>
@@ -383,7 +407,21 @@ function officeServices(props) {
   return String(raw).split(';').map(x => x.trim()).filter(Boolean);
 }
 
-// Set by buildFilters(): does an office pass the State/Province, Business Unit and Services filters?
+// The markets column is a semicolon-delimited list too ("Healthcare; Retail; Hospitality")
+function officeMarkets(props) {
+  const key = Object.keys(props || {}).find(k => /^markets?$/i.test(k.trim()));
+  const raw = key ? props[key] : '';
+  if (raw == null) return [];
+  return String(raw).split(';').map(x => x.trim()).filter(Boolean);
+}
+
+// Markets picked in "Highlight" mode (lower-case keys): matching offices are drawn in the highlight
+// style, every other office stays on the map as usual. Set by buildFilters().
+let highlightedMarkets = new Set();
+let marketsMode = 'highlight'; // 'highlight' | 'filter'
+let resetMarketsFilter = () => {};
+
+// Set by buildFilters(): does an office pass the State/Province, Business Unit, Services and Markets filters?
 let accordionFilter = () => true;
 // Set by buildFilters(): re-evaluates which options each of those lists still offers
 let refreshFilterOptions = () => {};
@@ -471,7 +509,22 @@ const countriesLayer = new ol.layer.Vector({
         stroke: new ol.style.Stroke({ color: "#EDEDED", width: 0.5 })
       })
     });
-    const officeLayer = new ol.layer.Vector({ source: new ol.source.Vector(), style: OFFICE_STYLE });
+    // An office whose markets include a highlighted one is the same single dot, just drawn bigger,
+    // in dark blue and on top of the others (so no office ever appears twice)
+    const MARKET_HIGHLIGHT_COLOR = '#000086';
+    const OFFICE_HIGHLIGHT_STYLE = new ol.style.Style({
+      zIndex: 2,
+      image: new ol.style.Circle({
+        radius: 8,
+        fill: new ol.style.Fill({ color: MARKET_HIGHLIGHT_COLOR }),
+        stroke: new ol.style.Stroke({ color: "#FFFFFF", width: 1.5 })
+      })
+    });
+    const officeLayer = new ol.layer.Vector({
+      source: new ol.source.Vector(),
+      style: feature => highlightedMarkets.size && officeMarkets(feature.getProperties()).some(m => highlightedMarkets.has(m.toLowerCase()))
+        ? OFFICE_HIGHLIGHT_STYLE : OFFICE_STYLE
+    });
 
     // Australia inset: a framed box, the Australian states, and its label
     const STATE_STYLE = new ol.style.Style({
@@ -1023,6 +1076,7 @@ document.getElementById('clearStatesSelection').addEventListener('click', functi
       const regionSelect = document.getElementById('regionFilter');
       const buSelect = document.getElementById('buFilter');
       const servicesSelect = document.getElementById('servicesFilter');
+      const marketsSelect = document.getElementById('marketsFilter');
 
       const states = [...new Set(gj.features.filter(f => f.properties.COUNTRY === 'US').map(f => f.properties["STATE / PROVINCE"]).filter(Boolean))].sort();
       const provinces = [...new Set(gj.features.filter(f => f.properties.COUNTRY === 'CAN').map(f => f.properties["STATE / PROVINCE"]).filter(Boolean))].sort();
@@ -1088,6 +1142,22 @@ document.getElementById('regionSearchBox').addEventListener('input', () => syncS
       document.getElementById('servicesControls').style.display = serviceLabels.size ? '' : 'none';
       document.getElementById('servicesSearchBox').addEventListener('input', () => syncSelect(servicesSelect, 'servicesSearchBox'));
 
+      // Markets: same idea as services
+      const marketLabels = new Map();
+      gj.features.forEach(f => officeMarkets(f.properties).forEach(m => {
+        const k = m.toLowerCase();
+        if (!marketLabels.has(k)) marketLabels.set(k, m);
+      }));
+      [...marketLabels.entries()].sort((a, b) => a[1].localeCompare(b[1])).forEach(([k, label]) => {
+        const o = document.createElement('option');
+        o.value = k;
+        o.textContent = label;
+        marketsSelect.appendChild(o);
+      });
+      document.getElementById('marketsEmpty').style.display = marketLabels.size ? 'none' : 'block';
+      document.getElementById('marketsControls').style.display = marketLabels.size ? '' : 'none';
+      document.getElementById('marketsSearchBox').addEventListener('input', () => syncSelect(marketsSelect, 'marketsSearchBox'));
+
       function getSelected(select) {
         return Array.from(select.selectedOptions).map(o => o.value);
       }
@@ -1102,12 +1172,15 @@ document.getElementById('regionSearchBox').addEventListener('input', () => syncS
         return p.COUNTRY === 'US' ? 'US|' + st : p.COUNTRY === 'CAN' ? 'CAN|' + st : null;
       };
       const serviceKeys = f => officeServices(f.properties).map(x => x.toLowerCase());
+      const marketKeys = f => officeMarkets(f.properties).map(x => x.toLowerCase());
       function selectionTests() {
-        const r = new Set(getSelected(regionSelect)), b = new Set(getSelected(buSelect)), sv = new Set(getSelected(servicesSelect));
+        const r = new Set(getSelected(regionSelect)), b = new Set(getSelected(buSelect)), sv = new Set(getSelected(servicesSelect)), mk = new Set(getSelected(marketsSelect));
         return {
           region: f => !r.size || r.has(regionKey(f)),
           bu: f => !b.size || !(f.properties || {}).BU || b.has(f.properties.BU),
-          services: f => !sv.size || serviceKeys(f).some(k => sv.has(k))
+          services: f => !sv.size || serviceKeys(f).some(k => sv.has(k)),
+          // in "Highlight" mode markets don't narrow anything, they only colour offices
+          markets: f => marketsMode !== 'filter' || !mk.size || marketKeys(f).some(k => mk.has(k))
         };
       }
 
@@ -1124,9 +1197,10 @@ document.getElementById('regionSearchBox').addEventListener('input', () => syncS
 
       refreshFilterOptions = function() {
         const lists = [
-          { select: regionSelect, key: 'region', search: 'regionSearchBox', values: f => [regionKey(f)], others: ['bu', 'services'] },
-          { select: buSelect, key: 'bu', search: null, values: f => [(f.properties || {}).BU], others: ['region', 'services'] },
-          { select: servicesSelect, key: 'services', search: 'servicesSearchBox', values: serviceKeys, others: ['region', 'bu'] }
+          { select: regionSelect, key: 'region', search: 'regionSearchBox', values: f => [regionKey(f)], others: ['bu', 'services', 'markets'] },
+          { select: buSelect, key: 'bu', search: null, values: f => [(f.properties || {}).BU], others: ['region', 'services', 'markets'] },
+          { select: servicesSelect, key: 'services', search: 'servicesSearchBox', values: serviceKeys, others: ['region', 'bu', 'markets'] },
+          { select: marketsSelect, key: 'markets', search: 'marketsSearchBox', values: marketKeys, others: ['region', 'bu', 'services'] }
         ];
         let avail = {};
         // Dropping a selection that has lost its link only loosens the other lists, so this settles quickly
@@ -1156,7 +1230,7 @@ document.getElementById('regionSearchBox').addEventListener('input', () => syncS
       // position to the top or bottom. Run fn, then put each list back so that the option that was
       // at the top of its view is still at the same place.
       function withScrollKept(fn) {
-        const keepers = [regionSelect, buSelect, servicesSelect].map(select => {
+        const keepers = [regionSelect, buSelect, servicesSelect, marketsSelect].map(select => {
           const top = select.scrollTop, y0 = select.getBoundingClientRect().y;
           const anchors = [];
           for (const o of select.options) {
@@ -1174,7 +1248,7 @@ document.getElementById('regionSearchBox').addEventListener('input', () => syncS
         const result = fn();
         keepers.forEach(k => k());
         requestAnimationFrame(() => keepers.forEach(k => k()));
-        [regionSelect, buSelect, servicesSelect].forEach(holdScroll);
+        [regionSelect, buSelect, servicesSelect, marketsSelect].forEach(holdScroll);
         return result;
       }
 
@@ -1198,10 +1272,35 @@ document.getElementById('regionSearchBox').addEventListener('input', () => syncS
         select._releaseScroll = release;
       }
 
+      // What "Highlight" mode is currently colouring (drives the map style and the legend)
+      function syncMarketHighlight() {
+        highlightedMarkets = marketsMode === 'highlight' ? new Set(getSelected(marketsSelect)) : new Set();
+        document.getElementById('marketsHint').textContent = marketsMode === 'highlight'
+          ? 'Click markets to highlight their offices. Every office stays on the map.'
+          : 'Click markets to show only offices in those markets.';
+        document.getElementById('marketsModeHighlight').classList.toggle('active', marketsMode === 'highlight');
+        document.getElementById('marketsModeFilter').classList.toggle('active', marketsMode === 'filter');
+        officeLayer.changed();
+        updateLegend();
+      }
+
+      resetMarketsFilter = function() {
+        marketsSelect.selectedIndex = -1;
+        document.getElementById('marketsSearchBox').value = '';
+        marketsMode = 'highlight';
+        syncMarketHighlight();
+      };
+      ['Highlight', 'Filter'].forEach(m => document.getElementById('marketsMode' + m).addEventListener('click', () => {
+        marketsMode = m.toLowerCase();
+        applyFilters();
+      }));
+      syncMarketHighlight();
+
       async function applyFilters() {
         withScrollKept(refreshFilterOptions);
         const tests = selectionTests();
-        accordionFilter = f => tests.region(f) && tests.bu(f) && tests.services(f);
+        accordionFilter = f => tests.region(f) && tests.bu(f) && tests.services(f) && tests.markets(f);
+        syncMarketHighlight();
 
         const filtered = filteredOffices(); // includes the "specific states" selection in hide mode
         showOffices(filtered);
@@ -1223,10 +1322,16 @@ document.getElementById('regionSearchBox').addEventListener('input', () => syncS
         document.getElementById('servicesSearchBox').value = '';
         applyFilters();
       });
+      document.getElementById('clearMarkets').addEventListener('click', () => {
+        marketsSelect.selectedIndex = -1;
+        document.getElementById('marketsSearchBox').value = '';
+        applyFilters();
+      });
       document.getElementById('clearFilters').addEventListener('click', () => {
         regionSelect.selectedIndex = -1;
         buSelect.selectedIndex = -1;
         servicesSelect.selectedIndex = -1;
+        resetMarketsFilter();
         document.getElementById('regionSearchBox').value = '';
         document.getElementById('servicesSearchBox').value = '';
         accordionFilter = () => true;
@@ -1237,16 +1342,17 @@ document.getElementById('regionSearchBox').addEventListener('input', () => syncS
       regionSelect.addEventListener('change', applyFilters);
       buSelect.addEventListener('change', applyFilters);
       servicesSelect.addEventListener('change', applyFilters);
-      // plain click toggles a service (no Ctrl/Cmd needed), so several can be picked in a row
-      servicesSelect.addEventListener('mousedown', e => {
+      marketsSelect.addEventListener('change', applyFilters);
+      // plain click toggles a service / market (no Ctrl/Cmd needed), so several can be picked in a row
+      [servicesSelect, marketsSelect].forEach(select => select.addEventListener('mousedown', e => {
         if (e.target.tagName !== 'OPTION' || e.button !== 0) return;
         e.preventDefault();
         withScrollKept(() => {
           e.target.selected = !e.target.selected;
-          servicesSelect.focus({ preventScroll: true });
+          select.focus({ preventScroll: true });
           applyFilters();
         });
-      });
+      }));
     }
 
     // Legend
@@ -1267,6 +1373,10 @@ document.getElementById('regionSearchBox').addEventListener('input', () => syncS
 
       if (officeLayer.getVisible()) {
         addLegendItem(itemsEl, '#009DE0', "Salas O'Brien Offices");
+        if (highlightedMarkets.size) {
+          const names = Array.from(document.getElementById('marketsFilter').selectedOptions).map(o => o.textContent);
+          addLegendItem(itemsEl, MARKET_HIGHLIGHT_COLOR, 'Highlighted: ' + (names.length > 3 ? names.slice(0, 3).join(', ') + ` +${names.length - 3}` : names.join(', ')));
+        }
       }
 
       for (const l of uploadLayers) {
@@ -1550,6 +1660,7 @@ document.getElementById('regionSearchBox').addEventListener('input', () => syncS
       document.getElementById('regionFilter').selectedIndex = -1;
       document.getElementById('buFilter').selectedIndex = -1;
       document.getElementById('servicesFilter').selectedIndex = -1;
+      resetMarketsFilter();
       document.getElementById('regionSearchBox').value = '';
       document.getElementById('servicesSearchBox').value = '';
       accordionFilter = () => true;
