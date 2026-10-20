@@ -285,8 +285,8 @@
   </label>
   <div id="statesSelectContainer" style="display:none; margin-top:10px;">
     <div class="segmented" style="margin-bottom:10px;">
-      <button id="statesModeHide" class="active">Hide others</button>
-      <button id="statesModeHighlight">Highlight</button>
+      <button id="statesModeHighlight" class="active">Highlight</button>
+      <button id="statesModeHide">Hide others</button>
     </div>
     <label class="subhead" style="display:block;">Select which to keep / highlight (Ctrl/Cmd + click for multiple)</label>
     <div style="margin-top: 6px;">
@@ -909,7 +909,7 @@ function buildStatesSelect(filter = '') {
 // "Hide others" removes every state/province that isn't selected (and filters the office dots to
 // the selection); "Highlight" keeps everything and fills the selected ones in gray (#666666).
 const HIGHLIGHT_COLOR = '#666666';
-let statesMode = 'hide';
+let statesMode = 'highlight';
 const HIGHLIGHT_STYLE = new ol.style.Style({
   stroke: new ol.style.Stroke({ color: "#FFFFFF", width: 0.75 }),
   fill: new ol.style.Fill({ color: HIGHLIGHT_COLOR })
@@ -983,14 +983,14 @@ function setStatesMode(mode) {
   document.getElementById('statesModeHighlight').classList.toggle('active', mode === 'highlight');
   applyStatesMode();
 }
-// Back to the full map: box unticked, nothing selected, default "Hide others" mode
+// Back to the full map: box unticked, nothing selected, default "Highlight" mode
 function resetStatesSelection() {
   document.getElementById('hideStatesCheckbox').checked = false;
   document.getElementById('statesSelectContainer').style.display = 'none';
   selectedStatesProvinces.clear();
   document.getElementById('statesSearchBox').value = '';
   buildStatesSelect();
-  setStatesMode('hide');
+  setStatesMode('highlight');
 }
 document.getElementById('statesModeHide').addEventListener('click', () => setStatesMode('hide'));
 document.getElementById('statesModeHighlight').addEventListener('click', () => setStatesMode('highlight'));
