@@ -187,6 +187,7 @@
       pointer-events:none;
       display:none;
       z-index:10;
+      max-width:340px;
     }
 	
 	.ol-zoom {
@@ -263,8 +264,8 @@
       <div id="marketsEmpty" class="muted" style="display:none;">No markets in the office data yet.</div>
       <div id="marketsControls">
         <div class="segmented" style="margin-bottom:8px;">
-          <button id="marketsModeHighlight" class="active">Highlight</button>
-          <button id="marketsModeFilter">Filter</button>
+          <button id="marketsModeFilter" class="active">Filter</button>
+          <button id="marketsModeHighlight">Highlight</button>
         </div>
         <label class="subhead" id="marketsHint" style="display:block;"></label>
         <div style="margin-top: 6px; margin-bottom: 6px;">
@@ -418,7 +419,7 @@ function officeMarkets(props) {
 // Markets picked in "Highlight" mode (lower-case keys): matching offices are drawn in the highlight
 // style, every other office stays on the map as usual. Set by buildFilters().
 let highlightedMarkets = new Set();
-let marketsMode = 'highlight'; // 'highlight' | 'filter'
+let marketsMode = 'filter'; // 'filter' | 'highlight'
 let resetMarketsFilter = () => {};
 
 // Set by buildFilters(): does an office pass the State/Province, Business Unit, Services and Markets filters?
@@ -722,6 +723,7 @@ const countriesLayer = new ol.layer.Vector({
           const address = p.ADDRESS || p.address || '';
           const phone = p["MAIN PHONE"] || '';
           const bu = p.BU || p.bu || '';
+          const services = officeServices(p);
           const color = p.color || '#009DE0';
           return `
           <div style="line-height:1.2;${i ? ' margin-top:8px; padding-top:8px; border-top:1px solid #e5e7eb;' : ''}">
@@ -729,6 +731,7 @@ const countriesLayer = new ol.layer.Vector({
             <div style="font-size:11px; color:#333;">${address}</div>
             ${phone ? `<div style="font-size:11px; color:#666;">${phone}</div>` : ''}
             ${bu ? `<div style="font-size:11px; color:#666;">${bu}</div>` : ''}
+            ${services.length ? `<div style="font-size:11px; color:#333; margin-top:4px;"><b>Services:</b> ${services.join('; ')}</div>` : ''}
           </div>`;
         }).join('');
         popupEl.style.display = 'block';
@@ -736,7 +739,10 @@ const countriesLayer = new ol.layer.Vector({
         const x = evt.pixel[0];
         const flip = x + 12 + popupEl.offsetWidth > window.innerWidth;
         popupEl.style.left = (flip ? x - 12 - popupEl.offsetWidth : x + 12) + 'px';
-        popupEl.style.top = evt.pixel[1] + 12 + 'px';
+        // and move up when it would run off the bottom (tall when several offices or many services)
+        const y = evt.pixel[1];
+        const below = y + 12 + popupEl.offsetHeight > window.innerHeight;
+        popupEl.style.top = Math.max(4, below ? window.innerHeight - popupEl.offsetHeight - 8 : y + 12) + 'px';
         map.getTargetElement().style.cursor = 'pointer';
       } else {
         popupEl.style.display = 'none';
@@ -1343,7 +1349,7 @@ document.getElementById('regionSearchBox').addEventListener('input', () => syncS
       resetMarketsFilter = function() {
         marketsSelect.selectedIndex = -1;
         document.getElementById('marketsSearchBox').value = '';
-        marketsMode = 'highlight';
+        marketsMode = 'filter';
         syncMarketHighlight();
       };
       ['Highlight', 'Filter'].forEach(m => document.getElementById('marketsMode' + m).addEventListener('click', () => {
